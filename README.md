@@ -35,8 +35,6 @@ For rgeo:
 
 ```ruby
 >>> require 'rgeo'
->>> RGeo::CoordSys::Proj4.supported?
-=> true
 >>> RGeo::Geos.supported?
 => true
 ```
