@@ -1,88 +1,65 @@
-set -e
+vendor_lib() {
+	LIBRARY=$1
+	VERSION=$2
+	VENDOR_DIR=$3
 
-# Parameters
+	echo "-----> Installing $LIBRARY-$VERSION"
+	LIBRARY_URL="https://heroku-geos.s3-eu-west-1.amazonaws.com/$LIBRARY/$LIBRARY-$VERSION.tgz
+
+	mkdir -p $VENDOR_DIR
+	if ! curl "${LIBRARY_URL}" -s | tar zxv -C $VENDOR_DIR &> /dev/null; then
+	  echo " !     Requested $LIBRARY Version ($VERSION) is not available for this stack ($STACK)."
+	  echo " !     Aborting."
+	  exit 1
+	fi
+
+	mkdir -p "$CACHE_DIR/.heroku-geo-buildpack/"
+	# Store library version for future reference
+	echo "$VERSION" > "$CACHE_DIR/.heroku-geo-buildpack/$LIBRARY-version"
+}
+
 BUILD_DIR=$1
-CACHE_DIR="${2}/${STACK}"
-BP_DIR=$(cd $(dirname ${0:-}); cd ..; pwd)
+CACHE_DIR=$2
+ENV_DIR=$3
+BP_DIR=$(cd "$(dirname "${0:-}")"; cd ..; pwd)
 
-# Setup profile file
-PROFILE_PATH="$BUILD_DIR/.profile.d/geo.sh"
+VENDOR_DIR="$BUILD_DIR/.heroku-geo-buildpack/vendor"
+
+DEFAULT_GEOS_VERSION="3.8.1"
+DEFAULT_PROJ_VERSION="7.0.0"
+
+if [ -f "$ENV_DIR/GEOS_VERSION" ]; then
+	GEOS_VERSION=$(cat $ENV_DIR/GEOS_VERSION)
+elif [ -f "$CACHE_DIR/.heroku-geo-buildpack/GEOS-version" ]; then
+	GEOS_VERSION=$(cat $CACHE_DIR/.heroku-geo-buildpack/GEOS-version)
+else
+	GEOS_VERSION=$DEFAULT_GEOS_VERSION
+fi
+
+if [ -f "$ENV_DIR/PROJ_VERSION" ]; then
+	PROJ_VERSION=$(cat $ENV_DIR/PROJ_VERSION)
+elif [ -f "$CACHE_DIR/.heroku-geo-buildpack/PROJ-version" ]; then
+	PROJ_VERSION=$(cat $CACHE_DIR/.heroku-geo-buildpack/PROJ-version)
+else
+	PROJ_VERSION=$DEFAULT_PROJ_VERSION
+fi
+
+vendor_lib "GEOS" "$GEOS_VERSION" "$VENDOR_DIR"
+vendor_lib "PROJ" "$PROJ_VERSION" "$VENDOR_DIR"
+
+# Add some environment variables that are available to the next buildpacks, to ensure that pip can find the
+# GDAL installation as this is needed to pip install GDAL
+echo "export PATH=\"$BUILD_DIR/.heroku-geo-buildpack/vendor/bin:\$PATH\"" >> "$BP_DIR/export"
+echo "export LIBRARY_PATH=\"$BUILD_DIR/.heroku-geo-buildpack/vendor/lib:\$LIBRARY_PATH\"" >> "$BP_DIR/export"
+echo "export LD_LIBRARY_PATH=\"$BUILD_DIR/.heroku-geo-buildpack/vendor/lib:\$LD_LIBRARY_PATH\"" >> "$BP_DIR/export"
+echo "export CPLUS_INCLUDE_PATH=\"$BUILD_DIR/.heroku-geo-buildpack/vendor/include:\$CPLUS_INCLUDE_PATH\"" >> "$BP_DIR/export"
+echo "export C_INCLUDE_PATH=\"$BUILD_DIR/.heroku-geo-buildpack/vendor/include:\$C_INCLUDE_PATH\"" >> "$BP_DIR/export"
+
+PROFILE_PATH="$BUILD_DIR/.profile.d/heroku-geo-buildpack.sh"
 mkdir -p $(dirname $PROFILE_PATH)
 
-# Functions
-function indent() {
-  c='s/^/       /'
-  case $(uname) in
-    Darwin) sed -l "$c";;
-    *)      sed -u "$c";;
-  esac
-}
-
-function download_package() {
-  name="$1"
-  version="$2"
-  location="$3"
-
-  mkdir -p $location
-  package="https://heroku-geos.s3-eu-west-1.amazonaws.com/$name/$name-$version.tgz"
-  curl $package -s -o - | tar xzf - -C $location
-}
-
-function set-env (){
-  echo "export $1=$2" >> $PROFILE_PATH
-}
-
-function set-default-env (){
-  echo "export $1=\${$1:-$2}" >> $PROFILE_PATH
-}
-
-# Retrieve versions
-GEOS_VERSION="3.8.1"
-PROJ_VERSION="7.0.0"
-
-# Display some information
-echo "Using geos version: ${GEOS_VERSION}" | indent
-echo "Using proj version: ${PROJ_VERSION}" | indent
-
-# Vendor directories
-VENDORED_GEOS="vendor/geos/$GEOS_VERSION"
-VENDORED_PROJ="vendor/proj/$PROJ_VERSION"
-
-# Make sure cache dir exists
-mkdir -p $CACHE_DIR
-
-if [ ! -d $CACHE_DIR/$VENDORED_GEOS ]; then
-  echo "-----> Fetching and vendoring geos"
-  rm -rf "$CACHE_DIR/vendor/geos"
-  download_package "geos" "${GEOS_VERSION}" "${CACHE_DIR}/${VENDORED_GEOS}"
-fi
-
-if [ ! -d $CACHE_DIR/$VENDORED_PROJ ]; then
-  echo "-----> Fetching and vendoring proj"
-  rm -rf "$CACHE_DIR/vendor/proj"
-  download_package "proj" "${PROJ_VERSION}" "${CACHE_DIR}/${VENDORED_PROJ}"
-fi
-
-TARGET_VENDOR_DIR=".heroku/vendor"
-# Copy artifacts out of cache if exists.
-for dir in $VENDORED_GEOS $VENDORED_PROJ; do
-  mkdir -p $BUILD_DIR/$TARGET_VENDOR_DIR
-  cp -r $CACHE_DIR/$dir/* $BUILD_DIR/$TARGET_VENDOR_DIR &> /dev/null || true
-done
-
-# App directories
-APP_VENDOR="/app/$TARGET_VENDOR_DIR"
-
-# Setup environment variables
-set-env GEOS_LIBRARY_PATH "$APP_VENDOR/lib"
-set-env PROJ4_LIBRARY_PATH "$APP_VENDOR/lib"
-
-# Export env var for next build
-echo "BUNDLE_BUILD__RGEO=\"--with-opt-dir=$BUILD_DIR/$TARGET_VENDOR_DIR --with-geos-config=$BUILD_DIR/$TARGET_VENDOR_DIR/bin/geos-config\"" >> $BP_DIR/export
-set-default-env BUNDLE_BUILD__RGEO "--with-opt-dir=$TARGET_VENDOR_DIR --with-geos-config=$TARGET_VENDOR_DIR/bin/geos-config"
-set-default-env LIBRARY_PATH "$APP_VENDOR/lib"
-set-default-env LD_LIBRARY_PATH "$APP_VENDOR/lib"
-set-default-env CPATH "$APP_VENDOR/include"
-set-default-env PATH "$APP_VENDOR/bin"
-
-echo "-----> Vendoring geo libraries done"
+# Export vars
+echo 'export GEOS_LIBRARY_PATH="$HOME/.heroku-geo-buildpack/vendor/lib/libgeos_c.so"' >> $PROFILE_PATH
+echo 'export PROJ4_LIBRARY_PATH="$HOME/.heroku-geo-buildpack/vendor/lib/libproj.so"' >> $PROFILE_PATH
+echo 'export PATH="$HOME/.heroku-geo-buildpack/vendor/bin:$PATH"' >> $PROFILE_PATH
+echo 'export LD_LIBRARY_PATH="$HOME/.heroku-geo-buildpack/vendor/lib:$LD_LIBRARY_PATH"' >> $PROFILE_PATH
