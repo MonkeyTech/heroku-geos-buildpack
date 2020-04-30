@@ -19,11 +19,12 @@ function indent() {
 }
 
 function download_package() {
-  version="$1"
-  location="$2"
+  name="$1"
+  version="$2"
+  location="$3"
 
   mkdir -p $location
-  package="https://heroku-geos.s3-eu-west-1.amazonaws.com/$version/geos-$version.tgz"
+  package="https://heroku-geos.s3-eu-west-1.amazonaws.com/$name/$name-$version.tgz"
   curl $package -s -o - | tar xzf - -C $location
 }
 
@@ -37,12 +38,15 @@ function set-default-env (){
 
 # Retrieve versions
 GEOS_VERSION="3.8.1"
+PROJ_VERSION="7.0.0"
 
 # Display some information
 echo "Using geos version: ${GEOS_VERSION}" | indent
+echo "Using proj version: ${PROJ_VERSION}" | indent
 
 # Vendor directories
 VENDORED_GEOS="vendor/geos/$GEOS_VERSION"
+VENDORED_PROJ="vendor/proj/$PROJ_VERSION"
 
 # Make sure cache dir exists
 mkdir -p $CACHE_DIR
@@ -50,12 +54,18 @@ mkdir -p $CACHE_DIR
 if [ ! -d $CACHE_DIR/$VENDORED_GEOS ]; then
   echo "-----> Fetching and vendoring geos"
   rm -rf "$CACHE_DIR/vendor/geos"
-  download_package "${GEOS_VERSION}" "${CACHE_DIR}/${VENDORED_GEOS}"
+  download_package "geos" "${GEOS_VERSION}" "${CACHE_DIR}/${VENDORED_GEOS}"
+fi
+
+if [ ! -d $CACHE_DIR/$VENDORED_PROJ ]; then
+  echo "-----> Fetching and vendoring proj"
+  rm -rf "$CACHE_DIR/vendor/proj"
+  download_package "proj" "${PROJ_VERSION}" "${CACHE_DIR}/${VENDORED_PROJ}"
 fi
 
 TARGET_VENDOR_DIR=".heroku/vendor"
 # Copy artifacts out of cache if exists.
-for dir in $VENDORED_GEOS; do
+for dir in $VENDORED_GEOS $VENDORED_PROJ; do
   mkdir -p $BUILD_DIR/$TARGET_VENDOR_DIR
   cp -r $CACHE_DIR/$dir/* $BUILD_DIR/$TARGET_VENDOR_DIR &> /dev/null || true
 done
@@ -65,6 +75,7 @@ APP_VENDOR="/app/$TARGET_VENDOR_DIR"
 
 # Setup environment variables
 set-env GEOS_LIBRARY_PATH "$APP_VENDOR/lib"
+set-env PROJ4_LIBRARY_PATH "$APP_VENDOR/lib"
 
 # Export env var for next build
 echo "BUNDLE_BUILD__RGEO=\"--with-opt-dir=$BUILD_DIR/$TARGET_VENDOR_DIR --with-geos-config=$BUILD_DIR/$TARGET_VENDOR_DIR/bin/geos-config\"" >> $BP_DIR/export
