@@ -1,0 +1,77 @@
+set -e
+
+# Parameters
+BUILD_DIR=$1
+CACHE_DIR="${2}/${STACK}"
+BP_DIR=$(cd $(dirname ${0:-}); cd ..; pwd)
+
+# Setup profile file
+PROFILE_PATH="$BUILD_DIR/.profile.d/geo.sh"
+mkdir -p $(dirname $PROFILE_PATH)
+
+# Functions
+function indent() {
+  c='s/^/       /'
+  case $(uname) in
+    Darwin) sed -l "$c";;
+    *)      sed -u "$c";;
+  esac
+}
+
+function download_package() {
+  version="$1"
+  location="$2"
+
+  mkdir -p $location
+  package="https://heroku-geos.s3-eu-west-1.amazonaws.com/$version/geos-$version.tgz"
+  curl $package -s -o - | tar xzf - -C $location
+}
+
+function set-env (){
+  echo "export $1=$2" >> $PROFILE_PATH
+}
+
+function set-default-env (){
+  echo "export $1=\${$1:-$2}" >> $PROFILE_PATH
+}
+
+# Retrieve versions
+GEOS_VERSION="3.8.1"
+
+# Display some information
+echo "Using geos version: ${GEOS_VERSION}" | indent
+
+# Vendor directories
+VENDORED_GEOS="vendor/geos/$GEOS_VERSION"
+
+# Make sure cache dir exists
+mkdir -p $CACHE_DIR
+
+if [ ! -d $CACHE_DIR/$VENDORED_GEOS ]; then
+  echo "-----> Fetching and vendoring geos"
+  rm -rf "$CACHE_DIR/vendor/geos"
+  download_package "${GEOS_VERSION}" "${CACHE_DIR}/${VENDORED_GEOS}"
+fi
+
+TARGET_VENDOR_DIR=".heroku/vendor"
+# Copy artifacts out of cache if exists.
+for dir in $VENDORED_GEOS; do
+  mkdir -p $BUILD_DIR/$TARGET_VENDOR_DIR
+  cp -r $CACHE_DIR/$dir/* $BUILD_DIR/$TARGET_VENDOR_DIR &> /dev/null || true
+done
+
+# App directories
+APP_VENDOR="/app/$TARGET_VENDOR_DIR"
+
+# Setup environment variables
+set-env GEOS_LIBRARY_PATH "$APP_VENDOR/lib"
+
+# Export env var for next build
+echo "BUNDLE_BUILD__RGEO=\"--with-opt-dir=$BUILD_DIR/$TARGET_VENDOR_DIR --with-geos-config=$BUILD_DIR/$TARGET_VENDOR_DIR/bin/geos-config\"" >> $BP_DIR/export
+set-default-env BUNDLE_BUILD__RGEO "--with-opt-dir=$TARGET_VENDOR_DIR --with-geos-config=$TARGET_VENDOR_DIR/bin/geos-config"
+set-default-env LIBRARY_PATH "$APP_VENDOR/lib"
+set-default-env LD_LIBRARY_PATH "$APP_VENDOR/lib"
+set-default-env CPATH "$APP_VENDOR/include"
+set-default-env PATH "$APP_VENDOR/bin"
+
+echo "-----> Vendoring geo libraries done"
