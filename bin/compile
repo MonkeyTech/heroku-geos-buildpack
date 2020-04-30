@@ -26,7 +26,6 @@ BP_DIR=$(cd "$(dirname "${0:-}")"; cd ..; pwd)
 VENDOR_DIR="$BUILD_DIR/.heroku-geo-buildpack/vendor"
 
 DEFAULT_GEOS_VERSION="3.8.1"
-DEFAULT_PROJ_VERSION="7.0.0"
 
 if [ -f "$ENV_DIR/GEOS_VERSION" ]; then
 	GEOS_VERSION=$(cat $ENV_DIR/GEOS_VERSION)
@@ -36,16 +35,7 @@ else
 	GEOS_VERSION=$DEFAULT_GEOS_VERSION
 fi
 
-if [ -f "$ENV_DIR/PROJ_VERSION" ]; then
-	PROJ_VERSION=$(cat $ENV_DIR/PROJ_VERSION)
-elif [ -f "$CACHE_DIR/.heroku-geo-buildpack/PROJ-version" ]; then
-	PROJ_VERSION=$(cat $CACHE_DIR/.heroku-geo-buildpack/PROJ-version)
-else
-	PROJ_VERSION=$DEFAULT_PROJ_VERSION
-fi
-
 vendor_lib "geos" "$GEOS_VERSION" "$VENDOR_DIR"
-vendor_lib "proj" "$PROJ_VERSION" "$VENDOR_DIR"
 
 # Add some environment variables that are available to the next buildpacks, to ensure that pip can find the
 # GDAL installation as this is needed to pip install GDAL
@@ -60,6 +50,5 @@ mkdir -p $(dirname $PROFILE_PATH)
 
 # Export vars
 echo 'export GEOS_LIBRARY_PATH="$HOME/.heroku-geo-buildpack/vendor/lib/libgeos_c.so"' >> $PROFILE_PATH
-echo 'export PROJ4_LIBRARY_PATH="$HOME/.heroku-geo-buildpack/vendor/lib/libproj.so"' >> $PROFILE_PATH
 echo 'export PATH="$HOME/.heroku-geo-buildpack/vendor/bin:$PATH"' >> $PROFILE_PATH
 echo 'export LD_LIBRARY_PATH="$HOME/.heroku-geo-buildpack/vendor/lib:$LD_LIBRARY_PATH"' >> $PROFILE_PATH

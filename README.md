@@ -2,11 +2,11 @@ Heroku buildpack: geos
 ======================
 
 This is a [Heroku buildpack](http://devcenter.heroku.com/articles/buildpacks) that
-vendors the geos library.
+vendors the geos library. 
 
-You will use this buildpack with other major buildpack such as Ruby buildpack.
+Based on: https://github.com/heroku/heroku-geo-buildpack.git
 
-Based on: https://github.com/cyberdelia/heroku-geo-buildpack
+> NOTE: Currently supports version 3.8.1 for the Heroku-18 stack only.
 
 Usage
 -----
