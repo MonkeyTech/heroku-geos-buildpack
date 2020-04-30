@@ -44,8 +44,8 @@ else
 	PROJ_VERSION=$DEFAULT_PROJ_VERSION
 fi
 
-vendor_lib "GEOS" "$GEOS_VERSION" "$VENDOR_DIR"
-vendor_lib "PROJ" "$PROJ_VERSION" "$VENDOR_DIR"
+vendor_lib "geos" "$GEOS_VERSION" "$VENDOR_DIR"
+vendor_lib "proj" "$PROJ_VERSION" "$VENDOR_DIR"
 
 # Add some environment variables that are available to the next buildpacks, to ensure that pip can find the
 # GDAL installation as this is needed to pip install GDAL
